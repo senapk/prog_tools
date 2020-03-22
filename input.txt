@@ -1,0 +1,14 @@
+```
+a == b
+```
+
+```hs
+--IN : Lista xs e um natural n
+--OUT: N-ésimo termo de xs
+outro lixo qualquer sem igual igual
+elemento 2 [2,7,3,9] == 3
+```
+
+```hs
+case 0 4.4 [1,2,3] 5 [2,7,3,9] == [1,3,4,5,6]
+```

@@ -1,0 +1,116 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+import argparse
+import re
+import os
+import tempfile
+import shutil
+import subprocess
+from typing import Dict, List, Tuple, Union  # , Any, Callable
+from subprocess import PIPE
+
+def get_sources(folder: str) -> List[str]:
+    file_list: List[str] = os.listdir(folder)
+    s_list = []
+    for file in file_list:
+        if file.lower() == "readme.md":
+            s_list.append(file)
+        elif file.endswith(".tio"):
+            s_list.append(file)
+        elif file.endswith(".vpl"):
+            s_list.append(file)
+    return [os.path.join(folder, file) for file in s_list]
+
+def get_solvers(folder: str) -> List[str]:
+    file_list: List[str] = os.listdir(folder)
+    s_list = []
+    for file in file_list:
+        if file.lower().startswith("solver"):
+            s_list.append(file)
+    return [os.path.join(folder, file) for file in s_list]
+
+def prepare_exec(solver, folder):
+    if solver.endswith(".py"):
+        return "python3 " + solver
+    elif solver.endswith(".js"):
+        return "node " + solver
+    elif solver.endswith(".c"):
+        cmd = ["gcc", "-Wall", "-fsanitize=address", "-Wuninitialized", "-Wparentheses", "-Wreturn-type", "-Werror"]
+        cmd += ["-fno-diagnostics-color", solver, "-o", solver + ".out", "-lm", "-lutil"]
+        result = subprocess.run(cmd)
+        if result.returncode != 0:
+            exit(1)
+        return solver + ".out"
+    elif solver.endswith(".cpp"):
+        cmd = ["g++", "-std=c++17", "-Werror", "-Wshadow", "-Wall", "-g", "-fsanitize=address", "-fsanitize=undefined", "-D_GLIBCXX_DEBUG"]
+        cmd += [solver, "-o", solver + ".out"]
+        result = subprocess.run(cmd)
+        if result.returncode != 0:
+            exit(1)
+        return solver + ".out"
+    else:
+        print("  fail: solver not supported:", solver)
+
+def test_folder(folder: str, vertical: bool):
+    solver_list = get_solvers(folder) # [solver.c,solver.cpp,solver.js]
+    source_list = get_sources(folder)
+    fileonly = lambda x:  x.split(os.sep)[-1]
+
+    print ("  src_list: [" + ", ".join(map(fileonly, source_list)) + "]")
+    for solver in solver_list:
+        exec_cmd = prepare_exec(solver, folder)
+        vert = ["-v"] if vertical else []
+        param = ["th", "run"] + [exec_cmd] + source_list + vert
+        solver_name = "solver: " + fileonly(solver)
+        try:
+            p = subprocess.Popen(param, stdout=PIPE, stderr=PIPE, universal_newlines=True)
+            stdout, stderr = p.communicate()
+            if p.returncode == 0:
+                print("  ✓ " + solver_name)
+            else:
+                print("  🞩 " + solver_name)
+                print(stdout)
+                print(stderr)
+                print("  🞩 " + solver_name)
+                return False
+        except Exception as e:
+            print(str(e))
+            return False
+    return True
+        
+def copy_to_temp(folder):
+    temp_dir = tempfile.mkdtemp()
+    for file in os.listdir(folder):
+        if os.path.isfile(os.path.join(folder, file)):
+            shutil.copyfile(os.path.join(folder, file), os.path.join(temp_dir, file))
+    return temp_dir
+
+def main():
+    parser = argparse.ArgumentParser(prog='htest', description="testador de código", formatter_class=argparse.RawTextHelpFormatter)
+    parser.add_argument('folders', type=str, nargs="*", help='pasta com os dados')
+    parser.add_argument('--vertical', '-v', action='store_true', help="vertical diff")
+#    parser.add_argument('--main', '-m', action='store', type=str, help="arquivo para salvar a main")
+#    parser.add_argument("--update", action='store_true', help="Update main inside Readme")
+    args = parser.parse_args()
+
+    if len(args.folders) == 0:
+        folders = ["."]
+    if args.folders:
+        folders = args.folders
+    for folder in folders:
+        if len(get_sources(folder)) == 0:
+            print("  fail: test sources not found in this folder")
+            exit(1)
+        temp_dir = copy_to_temp(folder)
+        print(folder)
+        print("  temp_dir:", temp_dir)
+        if not test_folder(temp_dir, args.vertical):
+            print("  fail:", folder)
+            exit(1)
+
+
+if __name__ == '__main__':
+    main()
+
+
