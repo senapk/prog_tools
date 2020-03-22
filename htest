@@ -31,24 +31,67 @@ def get_solvers(folder: str) -> List[str]:
     return [os.path.join(folder, file) for file in s_list]
 
 def prepare_exec(solver, folder):
-    if solver.endswith(".py"):
-        return "python3 " + solver
-    elif solver.endswith(".js"):
-        return "node " + solver
-    elif solver.endswith(".c"):
+    def prepare_c(solver: str) -> str:
         cmd = ["gcc", "-Wall", "-fsanitize=address", "-Wuninitialized", "-Wparentheses", "-Wreturn-type", "-Werror"]
         cmd += ["-fno-diagnostics-color", solver, "-o", solver + ".out", "-lm", "-lutil"]
         result = subprocess.run(cmd)
         if result.returncode != 0:
             exit(1)
         return solver + ".out"
-    elif solver.endswith(".cpp"):
+
+    def prepare_cpp(solver: str) -> str:
         cmd = ["g++", "-std=c++17", "-Werror", "-Wshadow", "-Wall", "-g", "-fsanitize=address", "-fsanitize=undefined", "-D_GLIBCXX_DEBUG"]
         cmd += [solver, "-o", solver + ".out"]
         result = subprocess.run(cmd)
         if result.returncode != 0:
             exit(1)
         return solver + ".out"
+
+    def prepare_hs(solver, folder) -> str:
+        readme_path = os.path.join(folder, "Readme.md")
+        if not os.path.isfile(readme_path):
+            print(readme_path, " not found for haskell build")
+            exit(1)
+        main_hs =  "__Main.hs"
+        tio_hs = "__t.tio"
+        main_out = "__Main.hs.out"
+        
+        subprocess.run(["hsmod", folder, "--tio", tio_hs, "--main", main_hs])
+
+        main_hs = os.path.join(folder, "__Main.hs")
+        tio_hs = os.path.join(folder, "__t.tio")
+        main_out = os.path.join(folder, "__Main.hs.out")
+
+        # reading main only
+        with open(main_hs, "r") as f:
+            main_content = f.read()
+        # reading solver
+        with open(solver) as f:
+            solver_content = f.read()
+        # mounting full main
+        with open(main_hs, "w") as f:
+            f.write(solver_content + "\n" + main_content)
+        # getting extracted texts
+        with open(tio_hs) as f:
+            tio_content = f.read()
+        # inserting tio tests on readme
+        with open(readme_path, "a") as f:
+            f.write("\n" + tio_content)
+        # compiling haskell exec
+        subprocess.run(["ghc", main_hs, "-o", main_out])
+        return main_out
+
+
+    if solver.endswith(".py"):
+        return "python3 " + solver
+    elif solver.endswith(".js"):
+        return "node " + solver
+    elif solver.endswith(".c"):
+        return prepare_c(solver)
+    elif solver.endswith(".cpp"):
+        return prepare_cpp(solver)
+    elif solver.endswith(".hs"):
+        return prepare_hs(solver, folder)
     else:
         print("  fail: solver not supported:", solver)
 
@@ -99,6 +142,8 @@ def main():
     if args.folders:
         folders = args.folders
     for folder in folders:
+        if not os.path.isdir(folder):
+            continue
         if len(get_sources(folder)) == 0:
             print("  fail: test sources not found in this folder")
             exit(1)

@@ -3,13 +3,14 @@
 
 import argparse
 import re
+import os
 from typing import Dict, List, Tuple, Union  # , Any, Callable
 
 class Case:
-    def __init__(self, cmd, input, output):
+    def __init__(self, cmd, input, vpl_tests):
         self.cmd = cmd
         self.input = input
-        self.output = output
+        self.vpl_tests = vpl_tests
 
     @staticmethod
     def load_from_line(line: str):
@@ -26,13 +27,13 @@ class Case:
         return Case(_cmd, _input, _output)
     
     def to_tio(self):
-        return ">>>>>>>>\n" + self.input + "\n========\n" + self.output + "\n<<<<<<<<"
+        return ">>>>>>>>\n" + self.input + "\n========\n" + self.vpl_tests + "\n<<<<<<<<"
 
     def to_vpl(self):
-        return "case=\ninput=" + self.input + "\noutput=\"" + self.output + "\n\"\n"
+        return "case=\ninput=" + self.input + "\noutput=\"" + self.vpl_tests + "\n\"\n"
     
     def __eq__(self, test):
-        return (self.cmd == test.cmd) and (test.input == self.input) and (test.output == self.output)
+        return (self.cmd == test.cmd) and (test.input == self.input) and (test.vpl_tests == self.vpl_tests)
 
 
 
@@ -101,7 +102,7 @@ def read_from_file(path: str):
 def add_main(readme, readme_file, main_str):
     regex = r"<!--MAIN_BEGIN-->(.*)<!--MAIN_END-->"
     found = re.search(regex, readme, re.MULTILINE | re.DOTALL)
-    subst = "<!--MAIN_BEGIN-->\\n### Main\\n```hs\\n" + main_str + "\\n```\\n<!--MAIN_END-->\n"
+    subst = "<!--MAIN_BEGIN-->\\n### Main\\n```hs\\n" + main_str + "\\n```\\n<!--MAIN_END-->"
     if found:
         result = re.sub(regex, subst, readme, 0, re.MULTILINE | re.DOTALL)
         if result != readme:
@@ -114,35 +115,61 @@ def add_main(readme, readme_file, main_str):
         with open(readme_file, "w") as f:
             f.write(readme + add)
 
-def main():
-    parser = argparse.ArgumentParser(prog='hs.py', description="gerador haskell to vpl", formatter_class=argparse.RawTextHelpFormatter)
-    parser.add_argument('input', type=str, help='arquivo de entrada')
-    parser.add_argument('--vpl', '-v', action='store', type=str, help="arquivo para salvar o vpl")
-    parser.add_argument('--main', '-m', action='store', type=str, help="arquivo para salvar a main")
-    parser.add_argument("--update", action='store_true', help="Update main inside Readme")
-    args = parser.parse_args()
-
-    readme = read_from_file(args.input)
+def process_folder(folder: str, args):
+    readme_path = os.path.join(folder, "Readme.md")
+    readme = read_from_file(readme_path)
 
     tests = HFile.load_from_text(readme)
-    output = ""
-    for test in tests:
-        output += test.to_vpl() + "\n" + "\n"
+    print(folder, ", tests found: ", len(tests))
+    if len(tests) == 0:
+        print("  🞩 fail: none tests found")
+        exit(1)
     main_str = HMain.format_main(tests[-1])
+    
     if args.update:
-        add_main(readme, args.input, main_str)
+        add_main(readme, readme_path, main_str)
 
     if args.vpl:
-        with open(args.vpl, "w") as f:
-            f.write(output)
-    else:
-        print(output)
-        
+        vpl_path = os.path.join(folder, args.vpl)
+        vpl_tests = ""
+        for test in tests:
+            vpl_tests += test.to_vpl() + "\n" + "\n"
+        with open(vpl_path, "w") as f:
+            print("  ✓ " + vpl_path)
+            f.write(vpl_tests)
+    
+    if args.tio:
+        tio_path = os.path.join(folder, args.tio)
+        tio_tests = ""
+        for test in tests:
+            tio_tests += test.to_tio() + "\n" + "\n"
+        with open(tio_path, "w") as f:
+            print("  ✓ " + tio_path)
+            f.write(tio_tests)
+
     if args.main:
-        with open(args.main, "w") as f:
+        main_path = os.path.join(folder, args.main)
+        with open(main_path, "w") as f:
+            print("  ✓ " + main_path)
             f.write(main_str)
-    else:
-        print(main_str)
+
+
+def main():
+    parser = argparse.ArgumentParser(prog='hs.py', description="gerador haskell to vpl", formatter_class=argparse.RawTextHelpFormatter)
+    parser.add_argument('folders', type=str, nargs='*', help='diretório de trabalho')
+    parser.add_argument('--vpl', '-v', action='store', type=str, help="arquivo para salvar o vpl")
+    parser.add_argument('--tio', '-t', action='store', type=str, help="arquivo para salvar o tio")
+    parser.add_argument('--main', '-m', action='store', type=str, help="arquivo para salvar a main")
+    parser.add_argument("--update", action='store_true', help="Update main inside Readme.md")
+    args = parser.parse_args()
+
+    folders = ["."]
+    if len(args.folders) != 0:
+        folders = args.folders
+
+    for folder in folders:
+        if os.path.isdir(folder):
+            process_folder(folder, args)
 
 
 if __name__ == '__main__':

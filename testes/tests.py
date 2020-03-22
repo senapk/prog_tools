@@ -3,7 +3,7 @@
 
 import unittest
 
-from hs import Case, HFile, HMain
+from hsmod import Case, HFile, HMain
 
 class TestHS(unittest.TestCase):
     def setUp(self):
